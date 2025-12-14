@@ -1,0 +1,24 @@
+# Python / virtualenv
+__pycache__/
+*.py[cod]
+.env
+.venv/
+venv/
+
+# Streamlit cache
+.streamlit/
+
+# IDE/editor
+.vscode/
+.idea/
+
+# Data and outputs (large / user-provided)
+output/
+Training_Data/
+sample gdb/
+__pycache__/
+*.zip
+
+# Logs/temp
+*.log
+*.tmp
