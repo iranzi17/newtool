@@ -17,7 +17,11 @@ output/
 Training_Data/
 sample gdb/
 __pycache__/
+
+# Allow tracked DL pack
 *.zip
+!dl_packs/
+!dl_packs/default_dlpack.zip
 
 # Logs/temp
 *.log

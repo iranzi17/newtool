@@ -1,0 +1,29 @@
+{
+"type": "FeatureCollection",
+"name": "default_dlpack",
+"crs": { "type": "name", "properties": { "name": "urn:ogc:def:crs:EPSG::3857" } },
+"features": [
+{ "type": "Feature", "properties": { "label": "HIGH_VOLTAGE_CIRCUIT_BREAKER", "equipment": "HIGH_VOLTAGE_CIRCUIT_BREAKER", "confidence": 0.9, "source": "synthetic" }, "geometry": { "type": "Point", "coordinates": [ 0.0, 0.0 ] } },
+{ "type": "Feature", "properties": { "label": "DISCONNECTOR_SWITCH", "equipment": "DISCONNECTOR_SWITCH", "confidence": 0.9, "source": "synthetic" }, "geometry": { "type": "Point", "coordinates": [ 10.0, 0.0 ] } },
+{ "type": "Feature", "properties": { "label": "DIGITAL_FAULT_RECORDER", "equipment": "DIGITAL_FAULT_RECORDER", "confidence": 0.9, "source": "synthetic" }, "geometry": { "type": "Point", "coordinates": [ 20.0, 0.0 ] } },
+{ "type": "Feature", "properties": { "label": "CURRENT_TRANSFORMER", "equipment": "CURRENT_TRANSFORMER", "confidence": 0.9, "source": "synthetic" }, "geometry": { "type": "Point", "coordinates": [ 30.0, 0.0 ] } },
+{ "type": "Feature", "properties": { "label": "CT_INDOR_SWITCHGEAR", "equipment": "CT_INDOR_SWITCHGEAR", "confidence": 0.9, "source": "synthetic" }, "geometry": { "type": "Point", "coordinates": [ 40.0, 0.0 ] } },
+{ "type": "Feature", "properties": { "label": "CONNECTION_POINTS", "equipment": "CONNECTION_POINTS", "confidence": 0.9, "source": "synthetic" }, "geometry": { "type": "Point", "coordinates": [ 50.0, 0.0 ] } },
+{ "type": "Feature", "properties": { "label": "110VDC_CHARGER", "equipment": "110VDC_CHARGER", "confidence": 0.9, "source": "synthetic" }, "geometry": { "type": "Point", "coordinates": [ 60.0, 0.0 ] } },
+{ "type": "Feature", "properties": { "label": "110VDC_BATTERY", "equipment": "110VDC_BATTERY", "confidence": 0.9, "source": "synthetic" }, "geometry": { "type": "Point", "coordinates": [ 70.0, 0.0 ] } },
+{ "type": "Feature", "properties": { "label": "48VDC_CHARGER", "equipment": "48VDC_CHARGER", "confidence": 0.9, "source": "synthetic" }, "geometry": { "type": "Point", "coordinates": [ 80.0, 0.0 ] } },
+{ "type": "Feature", "properties": { "label": "48VDC_BATTERY", "equipment": "48VDC_BATTERY", "confidence": 0.9, "source": "synthetic" }, "geometry": { "type": "Point", "coordinates": [ 90.0, 0.0 ] } },
+{ "type": "Feature", "properties": { "label": "VT_INDOR_SWITCHGEAR", "equipment": "VT_INDOR_SWITCHGEAR", "confidence": 0.9, "source": "synthetic" }, "geometry": { "type": "Point", "coordinates": [ 100.0, 0.0 ] } },
+{ "type": "Feature", "properties": { "label": "VOLTAGE_TRANSFORMER", "equipment": "VOLTAGE_TRANSFORMER", "confidence": 0.9, "source": "synthetic" }, "geometry": { "type": "Point", "coordinates": [ 110.0, 0.0 ] } },
+{ "type": "Feature", "properties": { "label": "UPS", "equipment": "UPS", "confidence": 0.9, "source": "synthetic" }, "geometry": { "type": "Point", "coordinates": [ 120.0, 0.0 ] } },
+{ "type": "Feature", "properties": { "label": "TRANS_SYSTEM_PROT1", "equipment": "TRANS_SYSTEM_PROT1", "confidence": 0.9, "source": "synthetic" }, "geometry": { "type": "Point", "coordinates": [ 130.0, 0.0 ] } },
+{ "type": "Feature", "properties": { "label": "TELECOM", "equipment": "TELECOM", "confidence": 0.9, "source": "synthetic" }, "geometry": { "type": "Point", "coordinates": [ 140.0, 0.0 ] } },
+{ "type": "Feature", "properties": { "label": "LIGHTNING_ARRESTOR", "equipment": "LIGHTNING_ARRESTOR", "confidence": 0.9, "source": "synthetic" }, "geometry": { "type": "Point", "coordinates": [ 150.0, 0.0 ] } },
+{ "type": "Feature", "properties": { "label": "Transformers", "equipment": "Transformers", "confidence": 0.9, "source": "synthetic" }, "geometry": { "type": "Point", "coordinates": [ 160.0, 0.0 ] } },
+{ "type": "Feature", "properties": { "label": "LINE_BAY", "equipment": "LINE_BAY", "confidence": 0.9, "source": "synthetic" }, "geometry": { "type": "Polygon", "coordinates": [ [ [ 88.0, 0.0 ], [ 88.0, 3.0 ], [ 85.0, 3.0 ], [ 85.0, 0.0 ], [ 88.0, 0.0 ] ] ] } },
+{ "type": "Feature", "properties": { "label": "INDOR_SWITCHGEAR_TABLE", "equipment": "INDOR_SWITCHGEAR_TABLE", "confidence": 0.9, "source": "synthetic" }, "geometry": { "type": "Polygon", "coordinates": [ [ [ 93.0, 0.0 ], [ 93.0, 3.0 ], [ 90.0, 3.0 ], [ 90.0, 0.0 ], [ 93.0, 0.0 ] ] ] } },
+{ "type": "Feature", "properties": { "label": "BUSBAR", "equipment": "BUSBAR", "confidence": 0.9, "source": "synthetic" }, "geometry": { "type": "LineString", "coordinates": [ [ 190.0, 0.0 ], [ 195.0, 5.0 ] ] } },
+{ "type": "Feature", "properties": { "label": "POWER_CABLE_TO_TRANSFORMER", "equipment": "POWER_CABLE_TO_TRANSFORMER", "confidence": 0.9, "source": "synthetic" }, "geometry": { "type": "LineString", "coordinates": [ [ 200.0, 0.0 ], [ 205.0, 5.0 ] ] } },
+{ "type": "Feature", "properties": { "label": "Cabin", "equipment": "Cabin", "confidence": 0.9, "source": "synthetic" }, "geometry": { "type": "Polygon", "coordinates": [ [ [ 108.0, 0.0 ], [ 108.0, 3.0 ], [ 105.0, 3.0 ], [ 105.0, 0.0 ], [ 108.0, 0.0 ] ] ] } }
+]
+}

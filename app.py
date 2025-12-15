@@ -23,6 +23,7 @@ from shapely.geometry import shape as shapely_shape
 SAMPLE_GPKG_DIR = os.path.join(os.path.dirname(__file__), "sample gpkg")
 TRAINING_DATA_DIR = os.path.join(os.path.dirname(__file__), "Training_Data")
 DEFAULT_DL_PACK = os.path.join(TRAINING_DATA_DIR, "DLTrainingPack.zip")
+DEFAULT_DL_PACK_REPO = os.path.join(os.path.dirname(__file__), "dl_packs", "default_dlpack.zip")
 
 st.set_page_config(page_title="GDB Substation Equipment Converter", layout="wide")
 st.title("Substation GDB Auto-Cleaner (Layer per Equipment)")
@@ -900,7 +901,7 @@ def _collect_metric(target, geom, summaries, sources_for_layer, source_label):
 
 
 @st.cache_resource(show_spinner=False)
-def load_training_library(base_dir: str, max_per_layer: int = 200):
+def load_training_library(base_dir: str, max_per_layer: int = 200, extra_packs: list[str] | None = None):
     """
     Harvest simple geometry stats from training GDB/GPKG files.
     These stats are used only as a gentle fallback when DL/annotations are missing.
@@ -933,7 +934,10 @@ def load_training_library(base_dir: str, max_per_layer: int = 200):
                 errors.append(f"{path}::{layer}: {exc}")
 
     # Also harvest DL training packs (geojson/zip) to enrich stats
-    for pack_path in _iter_training_packs(base_dir):
+    pack_iter = list(_iter_training_packs(base_dir))
+    if extra_packs:
+        pack_iter.extend([p for p in extra_packs if p and os.path.exists(p)])
+    for pack_path in pack_iter:
         try:
             gdf = None
             if pack_path.lower().endswith(".zip"):
@@ -1425,7 +1429,12 @@ if base_crs is None:
 training_stats = {}
 training_errors = []
 if dl_assist.config.enabled:
-    training_stats, training_errors = load_training_library(TRAINING_DATA_DIR)
+    extra_packs = []
+    if os.path.exists(DEFAULT_DL_PACK):
+        extra_packs.append(DEFAULT_DL_PACK)
+    if os.path.exists(DEFAULT_DL_PACK_REPO):
+        extra_packs.append(DEFAULT_DL_PACK_REPO)
+    training_stats, training_errors = load_training_library(TRAINING_DATA_DIR, extra_packs=extra_packs)
     dl_assist.set_library_stats(training_stats)
     if training_stats:
         st.info(
@@ -1442,7 +1451,11 @@ if dl_assist.config.enabled:
                 st.write(msg)
 
 if dl_assist.config.enabled:
-    builtin_pack = DEFAULT_DL_PACK if os.path.exists(DEFAULT_DL_PACK) else None
+    builtin_pack = None
+    for candidate in (DEFAULT_DL_PACK, DEFAULT_DL_PACK_REPO):
+        if candidate and os.path.exists(candidate):
+            builtin_pack = candidate
+            break
     dl_assist.load_predictions(
         dl_drawings,
         base_crs,
