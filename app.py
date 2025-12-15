@@ -686,17 +686,26 @@ CLASSIFICATION_RULES = [
     # Indoor switchgear
     EquipmentRule(
         name="cb_indor_switchgear",
-        patterns=(r"\bCB\s+INDO?R\b",),
+        patterns=(r"\bCB\s+INDO?R\b", r"\bCB[-_ ]?MV\d*\b"),
         priority=7,
     ),
     EquipmentRule(
         name="CT_INDOR_SWITCHGEAR",
-        patterns=(r"\bCT\s+INDO?R\b", r"\bCURRENT\s+TRANSFORMER\s+INDO?R\b"),
+        patterns=(
+            r"\bCT\s+INDO?R\b",
+            r"\bCT[-_ ]?MV\d*\b",
+            r"\bCURRENT\s+TRANSFORMER\s+INDO?R\b",
+        ),
         priority=7,
     ),
     EquipmentRule(
         name="VT_INDOR_SWITCHGEAR",
-        patterns=(r"\bVT\s+INDO?R\b", r"\bVOLTAGE\s+TRANSFORMER\s+INDO?R\b"),
+        patterns=(
+            r"\bVT\s+INDO?R\b",
+            r"\bVT[-_ ]?MV\d*\b",
+            r"\bCV[-_ ]?MV\d*\b",
+            r"\bVOLTAGE\s+TRANSFORMER\s+INDO?R\b",
+        ),
         priority=7,
     ),
     # DC & auxiliary
@@ -828,6 +837,19 @@ def map_layer_to_equipment(layer_name: str) -> str | None:
     for equip in FORCED_GEOMETRY.keys():
         if canonical_layer_name(equip) == norm:
             return equip
+    # Heuristic fallbacks for common variants
+    if "48VDC" in norm and "CHARGER" in norm:
+        return "48VDC_CHARGER"
+    if "48VDC" in norm and "BATTERY" in norm:
+        return "48VDC_BATTERY"
+    if "INDOR" in norm and "SWITCHGEAR" in norm and "TABLE" in norm:
+        return "INDOR_SWITCHGEAR_TABLE"
+    if "INDOR" in norm and "CB" in norm:
+        return "cb_indor_switchgear"
+    if "INDOR" in norm and "CT" in norm:
+        return "CT_INDOR_SWITCHGEAR"
+    if "INDOR" in norm and "VT" in norm:
+        return "VT_INDOR_SWITCHGEAR"
     return None
 
 
