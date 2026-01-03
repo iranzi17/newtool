@@ -507,6 +507,37 @@ def safe_filename(name: str) -> str:
     return cleaned or "layer"
 
 
+def infer_geometry_type(layer_name: str, gdf: gpd.GeoDataFrame | None, ref_geoms_lookup: dict) -> str:
+    """Infer a geometry type for empty layers using processed or reference data."""
+    if gdf is not None:
+        for geom in gdf.geometry:
+            if geom is not None and not geom.is_empty:
+                return geom.geom_type
+    ref_list = ref_geoms_lookup.get(layer_name) if ref_geoms_lookup else None
+    if ref_list:
+        for geom in ref_list:
+            if geom is not None and not geom.is_empty:
+                return geom.geom_type
+    forced = FORCED_GEOMETRY.get(layer_name)
+    if forced == "Point":
+        return "Point"
+    if forced in ("Line", "Polyline"):
+        return "LineString"
+    if forced == "Polygon":
+        return "Polygon"
+    return "GeometryCollection"
+
+
+def export_empty_layer(out_path: str, layer_name: str, geometry_type: str, fields: list[str], crs):
+    """Create an empty GPKG layer with the provided schema."""
+    schema = {
+        "geometry": geometry_type or "GeometryCollection",
+        "properties": {field: "str" for field in fields},
+    }
+    with fiona.open(out_path, "w", driver="GPKG", layer=layer_name, schema=schema, crs=crs) as dst:
+        pass
+
+
 def build_dl_training_pack(processed_layers: dict[str, gpd.GeoDataFrame], base_crs, out_dir: str):
     """
     Build a DL-ready training pack from current processed layers.
@@ -1640,7 +1671,10 @@ if processed:
     st.success("All layers processed successfully.")
 else:
     st.warning("No records found to process.")
-    st.stop()
+    if reference_schemas:
+        st.info("Export will include empty layers using the reference sample schemas.")
+    else:
+        st.stop()
 
 # ================================================================
 # Export GPKG (one layer per equipment)
@@ -1652,12 +1686,31 @@ if os.path.exists(layers_dir):
     shutil.rmtree(layers_dir)
 os.makedirs(layers_dir, exist_ok=True)
 
-for layer_name, gdf_processed in processed.items():
+target_layers = {
+    name for name in set(processed.keys()).union(reference_schemas.keys()) if name not in BASE_LAYERS
+}
+if not target_layers:
+    st.error("No layers available for export.")
+    st.stop()
+
+reference_geoms_lookup = reference_geoms_raw or reference_geoms or {}
+st.caption(
+    f"Preparing export for {len(target_layers)} layer(s); empty layers will be included when defined in samples."
+)
+
+for layer_name in sorted(target_layers):
+    gdf_processed = processed.get(layer_name)
+    layer_crs = getattr(gdf_processed, "crs", base_crs)
     fname = safe_filename(layer_name) + ".gpkg"
     out_path = os.path.join(layers_dir, fname)
     if os.path.exists(out_path):
         os.remove(out_path)
-    gdf_processed.to_file(out_path, layer=layer_name, driver="GPKG")
+    if gdf_processed is not None and not gdf_processed.empty:
+        gdf_processed.to_file(out_path, layer=layer_name, driver="GPKG")
+    else:
+        fields = reference_schemas.get(layer_name, [])
+        geom_type = infer_geometry_type(layer_name, gdf_processed, reference_geoms_lookup)
+        export_empty_layer(out_path, layer_name, geom_type, fields, layer_crs)
 
 zip_path = os.path.join(temp_dir, "CleanEquipmentLayers.zip")
 if os.path.exists(zip_path):
