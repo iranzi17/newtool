@@ -1375,21 +1375,28 @@ def load_reference_schemas(sample_dir: str):
     counts = {}
     geoms = {}
     errors = []
+    fallback_layers = set()
 
     if not os.path.isdir(sample_dir):
-        return schemas, counts, geoms, ["Sample GPKG folder not found."]
+        return schemas, counts, geoms, ["Sample GPKG folder not found."], fallback_layers
 
     for fname in sorted(os.listdir(sample_dir)):
         if not fname.lower().endswith(".gpkg"):
             continue
+        file_stem = os.path.splitext(fname)[0]
         path = os.path.join(sample_dir, fname)
         try:
             layers = fiona.listlayers(path)
         except Exception as exc:
             errors.append(f"{fname}: {exc}")
+            fallback_layers.add(file_stem)
+            continue
+        if not layers:
+            fallback_layers.add(file_stem)
             continue
 
         for layer in layers:
+            fallback_layers.add(layer)
             try:
                 with fiona.open(path, layer=layer) as src:
                     schemas[layer] = list(src.schema.get("properties", {}).keys())
@@ -1397,13 +1404,18 @@ def load_reference_schemas(sample_dir: str):
                     geoms[layer] = [shapely_shape(feat["geometry"]) for feat in src if feat.get("geometry")]
             except Exception as exc:
                 errors.append(f"{fname} ({layer}): {exc}")
+                fallback_layers.add(file_stem)
 
-    return schemas, counts, geoms, errors
+    return schemas, counts, geoms, errors, fallback_layers
 
 
-reference_schemas, reference_counts_raw, reference_geoms_raw, schema_errors = load_reference_schemas(
-    SAMPLE_GPKG_DIR
-)
+(
+    reference_schemas,
+    reference_counts_raw,
+    reference_geoms_raw,
+    schema_errors,
+    sample_layers_fallback,
+) = load_reference_schemas(SAMPLE_GPKG_DIR)
 # Optional minimum counts only when alignment is enabled
 MIN_COUNTS = {"LIGHTNING_ARRESTOR": 6, "VOLTAGE_TRANSFORMER": 6}
 reference_counts = reference_counts_raw.copy()
@@ -1671,8 +1683,11 @@ if processed:
     st.success("All layers processed successfully.")
 else:
     st.warning("No records found to process.")
-    if reference_schemas:
-        st.info("Export will include empty layers using the reference sample schemas.")
+    if reference_schemas or sample_layers_fallback:
+        if reference_schemas:
+            st.info("Export will include empty layers using the reference sample schemas.")
+        else:
+            st.info("Sample GPKG placeholders will be exported even though schemas could not be read.")
     else:
         st.stop()
 
@@ -1687,7 +1702,11 @@ if os.path.exists(layers_dir):
 os.makedirs(layers_dir, exist_ok=True)
 
 target_layers = {
-    name for name in set(processed.keys()).union(reference_schemas.keys()) if name not in BASE_LAYERS
+    name
+    for name in set(processed.keys())
+    .union(reference_schemas.keys())
+    .union(sample_layers_fallback or set())
+    if name not in BASE_LAYERS
 }
 if not target_layers:
     st.error("No layers available for export.")
@@ -1695,7 +1714,7 @@ if not target_layers:
 
 reference_geoms_lookup = reference_geoms_raw or reference_geoms or {}
 st.caption(
-    f"Preparing export for {len(target_layers)} layer(s); empty layers will be included when defined in samples."
+    f"Preparing export for {len(target_layers)} layer(s); empty layers will be included using sample schemas when available."
 )
 
 for layer_name in sorted(target_layers):
