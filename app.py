@@ -604,6 +604,20 @@ def export_empty_layer(out_path: str, layer_name: str, geometry_type: str, field
         pass
 
 
+def apply_count_caps(processed_layers: dict[str, gpd.GeoDataFrame], caps: dict[str, int]):
+    """Trim processed layers to honor expected counts from learning sheets."""
+    if not caps:
+        return processed_layers
+    capped = {}
+    for layer, gdf in processed_layers.items():
+        cap = caps.get(layer)
+        if cap is not None and len(gdf) > cap:
+            capped[layer] = gdf.head(cap)
+        else:
+            capped[layer] = gdf
+    return capped
+
+
 def build_dl_training_pack(processed_layers: dict[str, gpd.GeoDataFrame], base_crs, out_dir: str):
     """
     Build a DL-ready training pack from current processed layers.
@@ -1880,6 +1894,9 @@ if use_reference_alignment:
         processed, loaded_layers, annotation_points, reference_schemas, reference_counts
     )
     processed = snap_to_reference(processed, reference_geoms)
+
+# Enforce learning sheet count caps even without reference alignment
+processed = apply_count_caps(processed, learning_counts)
 
 if processed:
     st.success("All layers processed successfully.")
