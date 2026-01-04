@@ -22,6 +22,7 @@ from shapely.geometry import shape as shapely_shape
 
 SAMPLE_GPKG_DIR = os.path.join(os.path.dirname(__file__), "sample gpkg")
 TRAINING_DATA_DIR = os.path.join(os.path.dirname(__file__), "Training_Data")
+LEARNING_DIR = os.path.join(os.path.dirname(__file__), "Learning")
 DEFAULT_DL_PACK = os.path.join(TRAINING_DATA_DIR, "DLTrainingPack.zip")
 DEFAULT_DL_PACK_REPO = os.path.join(os.path.dirname(__file__), "dl_packs", "default_dlpack.zip")
 
@@ -87,6 +88,12 @@ dl_detection_packs = st.file_uploader(
     "Optional: DL detection/training pack (zip/geojson/json) to pre-seed detections",
     type=["zip", "geojson", "json"],
     accept_multiple_files=True,
+)
+learning_dirs_available = [d for d in (TRAINING_DATA_DIR, LEARNING_DIR) if os.path.isdir(d)]
+use_learning_library = st.checkbox(
+    "Use learning library (Training_Data + Learning/*) to guide placement",
+    value=bool(learning_dirs_available),
+    help="Harvest geometry stats from local learning folders to guess equipment when annotations are missing.",
 )
 
 # Expected geometry type per equipment layer
@@ -846,16 +853,30 @@ LAYER_NAME_ALIASES = {
     "B_110VDC_CHARGER": "110VDC_CHARGER",
     "B_48VDC_BATTERY": "48VDC_BATTERY",
     "B_48VDC_CHARGER": "48VDC_CHARGER",
+    "110_VDC_BATTERY": "110VDC_BATTERY",
+    "110_VDC_CHARGER": "110VDC_CHARGER",
     "SWITCHGEAR": "INDOR_SWITCHGEAR_TABLE",
     "INDORCB": "cb_indor_switchgear",
     "INDOR_CT": "CT_INDOR_SWITCHGEAR",
     "INDOR_VT": "VT_INDOR_SWITCHGEAR",
     "INDORVT": "VT_INDOR_SWITCHGEAR",
+    "CB_INDOOR_SWITCH_GEAR": "cb_indor_switchgear",
+    "CT_INDOOR_SWITCH_GEAR": "CT_INDOR_SWITCHGEAR",
+    "VT_INDOOOR_SWITCH_GEAR": "VT_INDOR_SWITCHGEAR",
+    "INDOR_SWICTH_GEAR_TABLE": "INDOR_SWITCHGEAR_TABLE",
     "TRANS_SYSTEM_PROT2": "TRANS_SYSTEM_PROT1",
+    "TRANS_SYSTEM_PROTECTION1": "TRANS_SYSTEM_PROT1",
     "TRANSFORMER": "Transformers",
     "TRANSFORMERS": "Transformers",
+    "POWER_TRANSFOMER": "Transformers",
+    "CURRENT_TRANSFOMER": "CURRENT_TRANSFORMER",
+    "CURRENT_TRANSFORMER__CURRENT_TRANSFORMER": "CURRENT_TRANSFORMER",
     "DISCONNECTOR_SWITCHES": "DISCONNECTOR_SWITCH",
     "DISCONNECTOR_SWITCHES1": "DISCONNECTOR_SWITCH",
+    "POINT_CONNECTION": "CONNECTION_POINTS",
+    "POINTCONNECTION": "CONNECTION_POINTS",
+    "TELECOM_ODF": "TELECOM",
+    "TELECOM_SDH": "TELECOM",
     "BUSBAR1": "BUSBAR",
 }
 
@@ -921,28 +942,37 @@ def _geom_metrics(geom):
     }
 
 
-def _iter_training_sources(base_dir: str):
-    if not os.path.isdir(base_dir):
+def _iter_training_sources(base_dirs):
+    """Yield GDB/GPKG training sources from one or more directories."""
+    if not base_dirs:
         return
-    for root, dirs, files in os.walk(base_dir):
-        for d in dirs:
-            if d.lower().endswith(".gdb"):
-                yield os.path.join(root, d)
-        for f in files:
-            if f.lower().endswith(".gpkg"):
-                yield os.path.join(root, f)
+    dirs = list(base_dirs) if isinstance(base_dirs, (list, tuple, set)) else [base_dirs]
+    for base_dir in dirs:
+        if not os.path.isdir(base_dir):
+            continue
+        for root, subdirs, files in os.walk(base_dir):
+            for d in subdirs:
+                if d.lower().endswith(".gdb"):
+                    yield os.path.join(root, d)
+            for f in files:
+                if f.lower().endswith(".gpkg"):
+                    yield os.path.join(root, f)
 
 
-def _iter_training_packs(base_dir: str):
-    if not os.path.isdir(base_dir):
+def _iter_training_packs(base_dirs):
+    if not base_dirs:
         return
-    for root, _, files in os.walk(base_dir):
-        for f in files:
-            lower = f.lower()
-            if lower.endswith("dltrainingpack.zip") or lower.endswith(".geojson") or (
-                lower.endswith(".json") and "dltrainingpack" in lower
-            ):
-                yield os.path.join(root, f)
+    dirs = list(base_dirs) if isinstance(base_dirs, (list, tuple, set)) else [base_dirs]
+    for base_dir in dirs:
+        if not os.path.isdir(base_dir):
+            continue
+        for root, _, files in os.walk(base_dir):
+            for f in files:
+                lower = f.lower()
+                if lower.endswith("dltrainingpack.zip") or lower.endswith(".geojson") or (
+                    lower.endswith(".json") and "dltrainingpack" in lower
+                ):
+                    yield os.path.join(root, f)
 
 
 def _collect_metric(target, geom, summaries, sources_for_layer, source_label):
@@ -953,8 +983,45 @@ def _collect_metric(target, geom, summaries, sources_for_layer, source_label):
     sources_for_layer.setdefault(target, set()).add(source_label)
 
 
+def guess_from_library_stats(geom, training_stats: dict[str, EquipmentStatSummary]) -> str | None:
+    """Heuristic guess of equipment using geometry stats from training/learning data."""
+    if not training_stats or geom is None or geom.is_empty:
+        return None
+    metrics = _geom_metrics(geom)
+    if not metrics:
+        return None
+
+    def score(stat: EquipmentStatSummary):
+        s = 0.0
+        if stat.geom_type and metrics["geom_type"] != stat.geom_type:
+            s += 0.75
+        if stat.median_area and metrics.get("area"):
+            s += min(1.0, abs(metrics["area"] - stat.median_area) / (stat.median_area + 1e-9))
+        if stat.median_length and metrics.get("length"):
+            s += min(1.0, abs(metrics["length"] - stat.median_length) / (stat.median_length + 1e-9))
+        if stat.median_ratio and metrics.get("ratio"):
+            s += min(1.0, abs(metrics["ratio"] - stat.median_ratio) / (stat.median_ratio + 1e-9))
+        if stat.median_span and metrics.get("span"):
+            s += min(1.0, abs(metrics["span"] - stat.median_span) / (stat.median_span + 1e-9))
+        return s
+
+    best = None
+    best_score = None
+    for equip, stat in training_stats.items():
+        sc = score(stat)
+        if best is None or sc < best_score:
+            best, best_score = equip, sc
+    if best_score is not None and best_score < 2.2:
+        return best
+    return None
+
+
 @st.cache_resource(show_spinner=False)
-def load_training_library(base_dir: str, max_per_layer: int = 200, extra_packs: list[str] | None = None):
+def load_training_library(
+    base_dirs: tuple[str, ...],
+    max_per_layer: int = 200,
+    extra_packs: tuple[str, ...] | None = None,
+):
     """
     Harvest simple geometry stats from training GDB/GPKG files.
     These stats are used only as a gentle fallback when DL/annotations are missing.
@@ -963,7 +1030,7 @@ def load_training_library(base_dir: str, max_per_layer: int = 200, extra_packs: 
     sources_for_layer: dict[str, set] = {}
     errors = []
 
-    for path in _iter_training_sources(base_dir):
+    for path in _iter_training_sources(base_dirs):
         try:
             layers = fiona.listlayers(path)
         except Exception as exc:
@@ -971,7 +1038,7 @@ def load_training_library(base_dir: str, max_per_layer: int = 200, extra_packs: 
             continue
 
         for layer in layers:
-            target = layer
+            target = map_layer_to_equipment(layer) or layer
             if target not in FORCED_GEOMETRY:
                 continue
             try:
@@ -987,7 +1054,7 @@ def load_training_library(base_dir: str, max_per_layer: int = 200, extra_packs: 
                 errors.append(f"{path}::{layer}: {exc}")
 
     # Also harvest DL training packs (geojson/zip) to enrich stats
-    pack_iter = list(_iter_training_packs(base_dir))
+    pack_iter = list(_iter_training_packs(base_dirs))
     if extra_packs:
         pack_iter.extend([p for p in extra_packs if p and os.path.exists(p)])
     for pack_path in pack_iter:
@@ -1243,36 +1310,7 @@ class DeepLearningAssist:
 
     def _library_guess(self, geom):
         """Heuristic guess using training geometry stats; very soft fallback."""
-        if not self.library_stats or geom is None or geom.is_empty:
-            return None
-        metrics = _geom_metrics(geom)
-        if not metrics:
-            return None
-
-        def score(stat: EquipmentStatSummary):
-            s = 0.0
-            if stat.geom_type and metrics["geom_type"] != stat.geom_type:
-                s += 0.75  # geometry mismatch penalty
-            if stat.median_area and metrics.get("area"):
-                s += min(1.0, abs(metrics["area"] - stat.median_area) / (stat.median_area + 1e-9))
-            if stat.median_length and metrics.get("length"):
-                s += min(1.0, abs(metrics["length"] - stat.median_length) / (stat.median_length + 1e-9))
-            if stat.median_ratio and metrics.get("ratio"):
-                s += min(1.0, abs(metrics["ratio"] - stat.median_ratio) / (stat.median_ratio + 1e-9))
-            if stat.median_span and metrics.get("span"):
-                s += min(1.0, abs(metrics["span"] - stat.median_span) / (stat.median_span + 1e-9))
-            return s
-
-        best = None
-        best_score = None
-        for equip, stat in self.library_stats.items():
-            sc = score(stat)
-            if best is None or sc < best_score:
-                best, best_score = equip, sc
-        # Require reasonably close match
-        if best_score is not None and best_score < 2.2:
-            return best
-        return None
+        return guess_from_library_stats(geom, self.library_stats)
 
     def bootstrap_from_layers(self, loaded_layers):
         """
@@ -1491,29 +1529,35 @@ for layer in layers:
 if base_crs is None:
     st.warning("No CRS found in the source data. Output will have no CRS.")
 
-training_stats = {}
-training_errors = []
-if dl_assist.config.enabled:
-    extra_packs = []
-    if os.path.exists(DEFAULT_DL_PACK):
-        extra_packs.append(DEFAULT_DL_PACK)
-    if os.path.exists(DEFAULT_DL_PACK_REPO):
-        extra_packs.append(DEFAULT_DL_PACK_REPO)
-    training_stats, training_errors = load_training_library(TRAINING_DATA_DIR, extra_packs=extra_packs)
-    dl_assist.set_library_stats(training_stats)
-    if training_stats:
+training_stats_global: dict[str, EquipmentStatSummary] = {}
+training_errors_global: list[str] = []
+library_dirs = (
+    tuple(d for d in learning_dirs_available if os.path.isdir(d))
+    if use_learning_library
+    else tuple(d for d in (TRAINING_DATA_DIR,) if os.path.isdir(d))
+)
+extra_packs: list[str] = []
+if os.path.exists(DEFAULT_DL_PACK):
+    extra_packs.append(DEFAULT_DL_PACK)
+if os.path.exists(DEFAULT_DL_PACK_REPO):
+    extra_packs.append(DEFAULT_DL_PACK_REPO)
+if library_dirs:
+    training_stats_global, training_errors_global = load_training_library(
+        library_dirs, extra_packs=tuple(extra_packs)
+    )
+    if training_stats_global:
         st.info(
-            f"Training library loaded for DL assist ({sum(s.sample_count for s in training_stats.values())} samples across {len(training_stats)} equipment types)."
+            f"Learning library loaded ({sum(s.sample_count for s in training_stats_global.values())} samples across {len(training_stats_global)} equipment types)."
         )
-        with st.expander("Training data summary"):
-            for equip, stat in sorted(training_stats.items()):
+        with st.expander("Learning data summary"):
+            for equip, stat in sorted(training_stats_global.items()):
                 st.write(
                     f"{equip}: samples={stat.sample_count}, span~{stat.median_span}, ratio~{stat.median_ratio}, geom={stat.geom_type} (sources: {', '.join(stat.sources)})"
                 )
-    if training_errors:
-        with st.expander("Training data warnings"):
-            for msg in training_errors:
-                st.write(msg)
+if training_errors_global:
+    with st.expander("Learning data warnings"):
+        for msg in training_errors_global:
+            st.write(msg)
 
 if dl_assist.config.enabled:
     builtin_pack = None
@@ -1521,13 +1565,18 @@ if dl_assist.config.enabled:
         if candidate and os.path.exists(candidate):
             builtin_pack = candidate
             break
+    dl_assist.set_library_stats(training_stats_global)
+    if training_stats_global and not use_learning_library:
+        st.info(
+            f"DL assist using {sum(s.sample_count for s in training_stats_global.values())} learned samples across {len(training_stats_global)} equipment types."
+        )
     dl_assist.load_predictions(
         dl_drawings,
         base_crs,
         detection_packs=dl_detection_packs,
         builtin_pack_path=builtin_pack,
     )
-    if not dl_assist.ready and training_stats:
+    if not dl_assist.ready and training_stats_global:
         dl_assist.bootstrap_from_layers(loaded_layers)
     if dl_assist.ready:
         st.info(f"Loaded {len(dl_assist.predictions)} DL detection(s) for vision assist.")
@@ -1613,6 +1662,10 @@ for layer_name, gdf in loaded_layers.items():
             dl_guess = dl_assist.suggest_equipment(geom)
             if dl_guess:
                 target_layer = dl_guess
+        if classified is None and use_learning_library and training_stats_global:
+            lib_guess = guess_from_library_stats(geom, training_stats_global)
+            if lib_guess:
+                target_layer = lib_guess
 
         target_geom = FORCED_GEOMETRY.get(target_layer, "Original")
 
