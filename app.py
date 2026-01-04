@@ -1633,6 +1633,8 @@ if learning_counts:
         f"Learning sheet expected counts loaded for {len(learning_counts)} equipment type(s): "
         + ", ".join(f"{k}:{v}" for k, v in sorted(learning_counts.items()))
     )
+elif learning_sheet_uploads:
+    st.warning("Learning sheet uploaded but no counts were parsed; check column 1 contains device names.")
 if learning_count_errors:
     with st.expander("Learning sheet warnings"):
         for msg in learning_count_errors:
@@ -1908,14 +1910,9 @@ pre_cap_counts = {k: len(v) for k, v in processed.items()}
 processed = apply_count_caps(processed, learning_counts)
 post_cap_counts = {k: len(v) for k, v in processed.items()}
 if learning_counts:
-    st.caption(
-        "Applied learning count caps: "
-        + ", ".join(
-            f"{k}:{pre_cap_counts.get(k,0)}→{post_cap_counts.get(k,0)} (cap {learning_counts.get(k)})"
-            for k in sorted(learning_counts.keys())
-            if k in pre_cap_counts or k in post_cap_counts
-        )
-    )
+    with st.expander("Applied learning caps (before→after, cap)"):
+        for k in sorted(learning_counts.keys()):
+            st.write(f"{k}: {pre_cap_counts.get(k,0)}→{post_cap_counts.get(k,0)} (cap {learning_counts.get(k)})")
 
 if processed:
     st.success("All layers processed successfully.")
