@@ -95,7 +95,6 @@ use_learning_library = st.checkbox(
     value=bool(learning_dirs_available),
     help="Harvest geometry stats from local learning folders to guess equipment when annotations are missing.",
 )
-spatial_templates = load_spatial_templates(LEARNING_DIR if use_learning_library else None)
 learning_sheet_uploads = st.file_uploader(
     "Optional: upload learning sheet(s) (xlsx/xls) with expected equipment counts",
     type=["xlsx", "xls"],
@@ -1767,6 +1766,9 @@ if learning_count_errors:
     with st.expander("Learning sheet warnings"):
         for msg in learning_count_errors:
             st.write(msg)
+
+# Load spatial templates (e.g., from Learning/BUGARAMA) only if library use is enabled
+spatial_templates = load_spatial_templates(LEARNING_DIR if use_learning_library else None)
 
 if schema_errors:
     with st.expander("Reference schema warnings"):
