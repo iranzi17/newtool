@@ -1545,7 +1545,7 @@ def load_learning_counts(learning_dir: str, extra_files=None):
     cleanup: list[str] = []
 
     def iter_sources():
-        if os.path.isdir(learning_dir):
+        if learning_dir and os.path.isdir(learning_dir):
             for root, _, files in os.walk(learning_dir):
                 for fname in files:
                     lower = fname.lower()
