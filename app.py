@@ -1627,14 +1627,11 @@ if reference_schemas:
         )
     else:
         st.caption("Reference sample counts not available (all zero in sample GPKG).")
-learning_counts, learning_count_errors = load_learning_counts(LEARNING_DIR)
-uploaded_learning_counts, uploaded_learning_errors = load_learning_counts(
-    LEARNING_DIR, extra_files=learning_sheet_uploads
-)
-# Merge counts preferring explicit uploads
-for k, v in uploaded_learning_counts.items():
-    learning_counts[k] = max(learning_counts.get(k, 0), v)
-learning_count_errors.extend(uploaded_learning_errors)
+if learning_sheet_uploads:
+    # When sheets are uploaded, use only those for counts (ignore folder defaults)
+    learning_counts, learning_count_errors = load_learning_counts(None, extra_files=learning_sheet_uploads)
+else:
+    learning_counts, learning_count_errors = load_learning_counts(LEARNING_DIR)
 if learning_counts:
     st.info(
         f"Learning sheet expected counts loaded for {len(learning_counts)} equipment type(s): "
