@@ -95,6 +95,7 @@ use_learning_library = st.checkbox(
     value=bool(learning_dirs_available),
     help="Harvest geometry stats from local learning folders to guess equipment when annotations are missing.",
 )
+spatial_templates = load_spatial_templates(LEARNING_DIR if use_learning_library else None)
 learning_sheet_uploads = st.file_uploader(
     "Optional: upload learning sheet(s) (xlsx/xls) with expected equipment counts",
     type=["xlsx", "xls"],
@@ -617,6 +618,102 @@ def apply_count_caps(processed_layers: dict[str, gpd.GeoDataFrame], caps: dict[s
         else:
             capped[layer] = gdf
     return capped
+
+
+def load_spatial_templates(learning_dir: str):
+    """
+    Load simple spatial templates from fully annotated substations (e.g., Learning/BUGARAMA).
+    Extract normalized offsets of equipment centroids relative to the Cabin envelope.
+    """
+    templates: dict[str, list[tuple[float, float]]] = {}
+    if not learning_dir or not os.path.isdir(learning_dir):
+        return templates
+
+    for entry in os.listdir(learning_dir):
+        subdir = os.path.join(learning_dir, entry)
+        if not os.path.isdir(subdir):
+            continue
+        cabin_path = os.path.join(subdir, "Cabin.gpkg")
+        if not os.path.exists(cabin_path):
+            continue
+        try:
+            cabin_gdf = gpd.read_file(cabin_path)
+            if cabin_gdf.empty:
+                continue
+            cabin_geom = cabin_gdf.geometry.iloc[0]
+            minx, miny, maxx, maxy = cabin_geom.bounds
+            width = maxx - minx
+            height = maxy - miny
+            if width == 0 or height == 0:
+                continue
+        except Exception:
+            continue
+
+        for fname in os.listdir(subdir):
+            if not fname.lower().endswith(".gpkg") or fname == "Cabin.gpkg":
+                continue
+            equip = map_layer_to_equipment(os.path.splitext(fname)[0]) or os.path.splitext(fname)[0]
+            if equip not in FORCED_GEOMETRY:
+                continue
+            path = os.path.join(subdir, fname)
+            try:
+                gdf = gpd.read_file(path)
+            except Exception:
+                continue
+            if gdf is None or gdf.empty:
+                continue
+            for geom in gdf.geometry:
+                if geom is None or geom.is_empty:
+                    continue
+                cx, cy = geom.centroid.x, geom.centroid.y
+                nx = (cx - minx) / width if width else 0.5
+                ny = (cy - miny) / height if height else 0.5
+                templates.setdefault(equip, []).append((nx, ny))
+    return templates
+
+
+def apply_template_fill(processed_layers: dict[str, gpd.GeoDataFrame], templates, caps, base_crs):
+    """
+    When cabin exists and templates are available, synthesize missing equipment
+    at relative positions learned from template substations.
+    """
+    if not templates or "Cabin" not in processed_layers:
+        return processed_layers
+    cabin = processed_layers.get("Cabin")
+    if cabin is None or cabin.empty:
+        return processed_layers
+    cabin_geom = cabin.geometry.iloc[0]
+    minx, miny, maxx, maxy = cabin_geom.bounds
+    width = maxx - minx
+    height = maxy - miny
+    if width == 0 or height == 0:
+        return processed_layers
+
+    filled = dict(processed_layers)
+    for equip, offsets in templates.items():
+        cap = caps.get(equip) if caps else None
+        existing = len(filled.get(equip, []))
+        # Skip if we already met cap
+        if cap is not None and existing >= cap:
+            continue
+        remaining = cap - existing if cap is not None else len(offsets)
+        if remaining <= 0:
+            continue
+        geoms = []
+        for nx, ny in offsets:
+            x = minx + nx * width
+            y = miny + ny * height
+            geoms.append(Point(x, y))
+            if cap is not None and len(geoms) >= remaining:
+                break
+        if not geoms:
+            continue
+        df_new = gpd.GeoDataFrame({"geometry": geoms}, crs=base_crs or cabin.crs)
+        if equip in filled:
+            filled[equip] = pd.concat([filled[equip], df_new], ignore_index=True)
+        else:
+            filled[equip] = df_new
+    return filled
 
 
 def build_dl_training_pack(processed_layers: dict[str, gpd.GeoDataFrame], base_crs, out_dir: str):
@@ -1935,6 +2032,9 @@ if use_reference_alignment:
         processed, loaded_layers, annotation_points, reference_schemas, reference_counts
     )
     processed = snap_to_reference(processed, reference_geoms)
+
+# Fill missing equipment using spatial templates (e.g., from Bugarama) before final caps
+processed = apply_template_fill(processed, spatial_templates, learning_counts, base_crs)
 
 # Enforce learning sheet count caps even without reference alignment
 pre_cap_counts = {k: len(v) for k, v in processed.items()}
