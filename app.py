@@ -1896,7 +1896,18 @@ if use_reference_alignment:
     processed = snap_to_reference(processed, reference_geoms)
 
 # Enforce learning sheet count caps even without reference alignment
+pre_cap_counts = {k: len(v) for k, v in processed.items()}
 processed = apply_count_caps(processed, learning_counts)
+post_cap_counts = {k: len(v) for k, v in processed.items()}
+if learning_counts:
+    st.caption(
+        "Applied learning count caps: "
+        + ", ".join(
+            f"{k}:{pre_cap_counts.get(k,0)}→{post_cap_counts.get(k,0)} (cap {learning_counts.get(k)})"
+            for k in sorted(learning_counts.keys())
+            if k in pre_cap_counts or k in post_cap_counts
+        )
+    )
 
 if processed:
     st.success("All layers processed successfully.")
