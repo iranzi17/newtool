@@ -1600,6 +1600,7 @@ def load_learning_counts(learning_dir: str, extra_files=None):
 # Optional minimum counts only when alignment is enabled
 MIN_COUNTS = {"LIGHTNING_ARRESTOR": 6, "VOLTAGE_TRANSFORMER": 6}
 reference_counts = reference_counts_raw.copy()
+reference_counts_display = reference_counts_raw.copy()
 reference_geoms = reference_geoms_raw if use_reference_alignment else {}
 if use_reference_alignment:
     for k, v in MIN_COUNTS.items():
@@ -1611,7 +1612,10 @@ if reference_schemas:
         f"Loaded reference attribute schemas for {len(reference_schemas)} equipment layer(s)."
     )
     st.write(sorted(reference_schemas.keys()))
-    st.caption("Reference sample counts: " + ", ".join(f"{k}:{reference_counts.get(k, '?')}" for k in sorted(reference_schemas.keys())))
+    st.caption(
+        "Reference sample counts: "
+        + ", ".join(f"{k}:{reference_counts_display.get(k, '?')}" for k in sorted(reference_schemas.keys()))
+    )
 learning_counts, learning_count_errors = load_learning_counts(LEARNING_DIR)
 uploaded_learning_counts, uploaded_learning_errors = load_learning_counts(
     LEARNING_DIR, extra_files=learning_sheet_uploads
