@@ -676,12 +676,26 @@ def apply_template_fill(processed_layers: dict[str, gpd.GeoDataFrame], templates
     When cabin exists and templates are available, synthesize missing equipment
     at relative positions learned from template substations.
     """
-    if not templates or "Cabin" not in processed_layers:
+    if not templates:
         return processed_layers
+
+    cabin_geom = None
     cabin = processed_layers.get("Cabin")
-    if cabin is None or cabin.empty:
+    if cabin is not None and not cabin.empty:
+        cabin_geom = cabin.geometry.iloc[0]
+    else:
+        # Derive a working envelope from existing geometries
+        all_geoms = []
+        for gdf in processed_layers.values():
+            all_geoms.extend(list(gdf.geometry))
+        all_geoms = [g for g in all_geoms if g is not None and not g.is_empty]
+        if all_geoms:
+            from shapely.ops import unary_union
+
+            cabin_geom = unary_union(all_geoms).envelope
+    if cabin_geom is None or cabin_geom.is_empty:
         return processed_layers
-    cabin_geom = cabin.geometry.iloc[0]
+
     minx, miny, maxx, maxy = cabin_geom.bounds
     width = maxx - minx
     height = maxy - miny
@@ -689,6 +703,7 @@ def apply_template_fill(processed_layers: dict[str, gpd.GeoDataFrame], templates
         return processed_layers
 
     filled = dict(processed_layers)
+    pre_counts = {k: len(v) for k, v in filled.items()}
     for equip, offsets in templates.items():
         cap = caps.get(equip) if caps else None
         existing = len(filled.get(equip, []))
@@ -712,7 +727,7 @@ def apply_template_fill(processed_layers: dict[str, gpd.GeoDataFrame], templates
             filled[equip] = pd.concat([filled[equip], df_new], ignore_index=True)
         else:
             filled[equip] = df_new
-    return filled
+    return filled, pre_counts
 
 
 def build_dl_training_pack(processed_layers: dict[str, gpd.GeoDataFrame], base_crs, out_dir: str):
@@ -2036,7 +2051,10 @@ if use_reference_alignment:
     processed = snap_to_reference(processed, reference_geoms)
 
 # Fill missing equipment using spatial templates (e.g., from Bugarama) before final caps
-processed = apply_template_fill(processed, spatial_templates, learning_counts, base_crs)
+if use_learning_library and spatial_templates:
+    processed, tmpl_pre_counts = apply_template_fill(
+        processed, spatial_templates, learning_counts, base_crs
+    )
 
 # Enforce learning sheet count caps even without reference alignment
 pre_cap_counts = {k: len(v) for k, v in processed.items()}
@@ -2046,6 +2064,13 @@ if learning_counts:
     with st.expander("Applied learning caps (before→after, cap)"):
         for k in sorted(learning_counts.keys()):
             st.write(f"{k}: {pre_cap_counts.get(k,0)}→{post_cap_counts.get(k,0)} (cap {learning_counts.get(k)})")
+if use_learning_library and spatial_templates:
+    with st.expander("Spatial template fill (Bugarama)"):
+        tmpl_post_counts = {k: len(v) for k, v in processed.items()}
+        for k in sorted(spatial_templates.keys()):
+            before = tmpl_pre_counts.get(k, 0) if "tmpl_pre_counts" in locals() else 0
+            after = tmpl_post_counts.get(k, before)
+            st.write(f"{k}: {before}→{after}")
 
 if processed:
     st.success("All layers processed successfully.")
