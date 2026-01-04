@@ -1612,10 +1612,14 @@ if reference_schemas:
         f"Loaded reference attribute schemas for {len(reference_schemas)} equipment layer(s)."
     )
     st.write(sorted(reference_schemas.keys()))
-    st.caption(
-        "Reference sample counts: "
-        + ", ".join(f"{k}:{reference_counts_display.get(k, '?')}" for k in sorted(reference_schemas.keys()))
-    )
+    total_ref = sum(reference_counts_display.values()) if reference_counts_display else 0
+    if total_ref > 0:
+        st.caption(
+            "Reference sample counts: "
+            + ", ".join(f"{k}:{reference_counts_display.get(k, '?')}" for k in sorted(reference_schemas.keys()))
+        )
+    else:
+        st.caption("Reference sample counts not available (all zero in sample GPKG).")
 learning_counts, learning_count_errors = load_learning_counts(LEARNING_DIR)
 uploaded_learning_counts, uploaded_learning_errors = load_learning_counts(
     LEARNING_DIR, extra_files=learning_sheet_uploads
