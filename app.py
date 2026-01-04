@@ -1567,10 +1567,16 @@ def load_learning_counts(learning_dir: str, extra_files=None):
         try:
             xl = pd.ExcelFile(path)
             for sheet in xl.sheet_names:
-                df = xl.parse(sheet)
+                df = xl.parse(sheet, header=None, dtype=str)
                 if df.empty:
                     continue
-                series = df.iloc[:, 0].dropna()
+                series = (
+                    df.iloc[:, 0]
+                    .astype(str)
+                    .str.strip()
+                    .replace({"": None, "nan": None, "None": None})
+                    .dropna()
+                )
                 for device_name, c in series.value_counts().items():
                     equip = map_device_to_equipment(device_name)
                     if not equip:
@@ -1634,7 +1640,25 @@ if learning_counts:
         + ", ".join(f"{k}:{v}" for k, v in sorted(learning_counts.items()))
     )
 elif learning_sheet_uploads:
-    st.warning("Learning sheet uploaded but no counts were parsed; check column 1 contains device names.")
+    with st.expander("Learning sheet debug (no counts parsed)"):
+        st.warning("Learning sheet uploaded but no counts were parsed; showing first entries from column 1.")
+        try:
+            for f in learning_sheet_uploads:
+                try:
+                    df_preview = pd.read_excel(f, sheet_name=0, header=None)
+                    col = (
+                        df_preview.iloc[:, 0]
+                        .astype(str)
+                        .str.strip()
+                        .replace({"": None, "nan": None, "None": None})
+                        .dropna()
+                        .head(20)
+                    )
+                    st.write(getattr(f, "name", "sheet"), list(col))
+                except Exception as exc:
+                    st.write(f"Could not preview {getattr(f, 'name', f)}: {exc}")
+        except Exception as exc:
+            st.write(f"Preview failed: {exc}")
 if learning_count_errors:
     with st.expander("Learning sheet warnings"):
         for msg in learning_count_errors:
