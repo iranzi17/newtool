@@ -1628,13 +1628,19 @@ if reference_schemas:
     else:
         st.caption("Reference sample counts not available (all zero in sample GPKG).")
 if learning_sheet_uploads:
-    # When sheets are uploaded, use only those for counts (ignore folder defaults)
-    learning_counts, learning_count_errors = load_learning_counts(None, extra_files=learning_sheet_uploads)
+    # Use only the most recently uploaded sheet to avoid mixing counts from prior uploads
+    uploads_to_use = learning_sheet_uploads[-1:]
+    if len(learning_sheet_uploads) > 1:
+        st.warning(
+            f"Multiple sheets uploaded; using only the last one: {getattr(uploads_to_use[0], 'name', 'sheet')}."
+        )
+    learning_counts, learning_count_errors = load_learning_counts(None, extra_files=uploads_to_use)
 else:
     learning_counts, learning_count_errors = load_learning_counts(LEARNING_DIR)
 if learning_counts:
     st.info(
-        f"Learning sheet expected counts loaded for {len(learning_counts)} equipment type(s): "
+        f"Learning sheet expected counts loaded for {len(learning_counts)} equipment type(s) "
+        f"from {getattr(learning_sheet_uploads[-1], 'name', 'Learning folder') if learning_sheet_uploads else 'Learning folder'}: "
         + ", ".join(f"{k}:{v}" for k, v in sorted(learning_counts.items()))
     )
     with st.expander("Learning counts detail"):
