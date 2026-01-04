@@ -543,10 +543,17 @@ def infer_geometry_type(layer_name: str, gdf: gpd.GeoDataFrame | None, ref_geoms
 
 DEVICE_TO_EQUIPMENT = {
     "HIGH_VOLTAGE_BUSBAR_MEDIUM_VOLTAGE_BUSBAR": "BUSBAR",
+    "HIGH_VOLTAGE_SWITCH_HIGH_VOLTAGE_SWITCH": "DISCONNECTOR_SWITCH",
+    "HIGH_VOLTAGE_CIRCUIT_BREAKER_HIGH_VOLTAGE_CIRCUIT_BREAKER": "HIGH_VOLTAGE_CIRCUIT_BREAKER",
+    "HIGH_VOLTAGE_LINE": "LINE_BAY",
+    "LINE": "LINE_BAY",
+    "LINEBAY": "LINE_BAY",
+    "LINE_BAY": "LINE_BAY",
+    "POWER_TRANSFORMER_STEPUP_TRANSFORMER": "Transformers",
+    "POWER_TRANSFORMER__STEPUP_TRANSFORMER": "Transformers",
     "POWER_TRANSFORMER_STEPUP_TRANSFORMER": "Transformers",
     "POWER_TRANSFORMER": "Transformers",
     "STEPUP_TRANSFORMER": "Transformers",
-    "HIGH_VOLTAGE_SWITCH_HIGH_VOLTAGE_SWITCH": "DISCONNECTOR_SWITCH",
     "INDOOR_CIRCUIT_BREAKER_30KV_15KB": "cb_indor_switchgear",
     "INDOR_CB": "cb_indor_switchgear",
     "INDOOR_CURRENT_TRANSFORMER": "CT_INDOR_SWITCHGEAR",
@@ -556,25 +563,19 @@ DEVICE_TO_EQUIPMENT = {
     "CONTROL_AND_PROTECTION_PANELS": "TELECOM",
     "SUBSTATION_CABIN": "Cabin",
     "LIGHTNING_ARRESTER": "LIGHTNING_ARRESTOR",
-    "LINE_BAY": "LINE_BAY",
     "HIGHVOLTAGE_LINE": "LINE_BAY",
-    "LINE": "LINE_BAY",
-    "LINEBAY": "LINE_BAY",
     "MV_SWITCH_GEAR": "INDOR_SWITCHGEAR_TABLE",
     "CURRENT_TRANSFORMER": "CURRENT_TRANSFORMER",
     "VOLTAGE_TRANSFORMER": "VOLTAGE_TRANSFORMER",
-    "HIGH_VOLTAGE_CIRCUIT_BREAKER_HIGH_VOLTAGE_CIRCUIT_BREAKER": "HIGH_VOLTAGE_CIRCUIT_BREAKER",
     "DIGITAL_FAULT_RECORDER": "DIGITAL_FAULT_RECORDER",
     "DISTANCE_PROTECTION": "TRANS_SYSTEM_PROT1",
     "TRANSFORMER_PROTECTION": "transformer_protection",
     "LINE_OVERCURRENT_PROTECTION": "line_overcurrent_protection",
     "TRANSFORMER_BAY": "Transformers",
-    "POWER_TRANSFORMER__STEPUP_TRANSFORMER": "Transformers",
     "DC_SUPPLY_110_VDC_BATTERY": "110VDC_BATTERY",
     "DC_SUPPLY_110_VDC_CHARGER": "110VDC_CHARGER",
     "DC_SUPPLY_48_VDC_BATTERY": "48VDC_BATTERY",
     "DC_SUPPLY_48_VDC_CHARGER": "48VDC_CHARGER",
-    "HIGH_VOLTAGE_LINE": "LINE_BAY",
     "TRANS_SYSTEM_PROT1": "TRANS_SYSTEM_PROT1",
     "TELECOM": "TELECOM",
     "TELECOM_ODF": "TELECOM",
@@ -1639,6 +1640,9 @@ if learning_counts:
         f"Learning sheet expected counts loaded for {len(learning_counts)} equipment type(s): "
         + ", ".join(f"{k}:{v}" for k, v in sorted(learning_counts.items()))
     )
+    with st.expander("Learning counts detail"):
+        for k in sorted(learning_counts.keys()):
+            st.write(f"{k}: {learning_counts[k]}")
 elif learning_sheet_uploads:
     with st.expander("Learning sheet debug (no counts parsed)"):
         st.warning("Learning sheet uploaded but no counts were parsed; showing first entries from column 1.")
