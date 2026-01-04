@@ -95,6 +95,12 @@ use_learning_library = st.checkbox(
     value=bool(learning_dirs_available),
     help="Harvest geometry stats from local learning folders to guess equipment when annotations are missing.",
 )
+learning_sheet_uploads = st.file_uploader(
+    "Optional: upload learning sheet(s) (xlsx/xls) with expected equipment counts",
+    type=["xlsx", "xls"],
+    accept_multiple_files=True,
+    help="Upload per-substation data sheets to cap counts and improve naming.",
+)
 
 # Expected geometry type per equipment layer
 FORCED_GEOMETRY = {
@@ -1517,36 +1523,56 @@ def load_reference_schemas(sample_dir: str):
     return schemas, counts, geoms, errors, fallback_layers
 
 
-def load_learning_counts(learning_dir: str):
+def load_learning_counts(learning_dir: str, extra_files=None):
     """Harvest expected equipment counts from learning Excel sheets."""
     counts: dict[str, int] = {}
     errors: list[str] = []
-    if not os.path.isdir(learning_dir):
-        return counts, errors
-    for root, _, files in os.walk(learning_dir):
-        for fname in files:
-            lower = fname.lower()
-            if not (lower.endswith(".xlsx") or lower.endswith(".xls")):
-                continue
-            path = os.path.join(root, fname)
-            try:
-                xl = pd.ExcelFile(path)
-                for sheet in xl.sheet_names:
-                    df = xl.parse(sheet)
-                    if df.empty:
+    cleanup: list[str] = []
+
+    def iter_sources():
+        if os.path.isdir(learning_dir):
+            for root, _, files in os.walk(learning_dir):
+                for fname in files:
+                    lower = fname.lower()
+                    if lower.endswith(".xlsx") or lower.endswith(".xls"):
+                        yield os.path.join(root, fname)
+        if extra_files:
+            for f in extra_files:
+                if isinstance(f, str):
+                    yield f
+                    continue
+                name = getattr(f, "name", "sheet")
+                suffix = os.path.splitext(name)[1] or ".xlsx"
+                tmp = tempfile.NamedTemporaryFile(delete=False, suffix=suffix)
+                tmp.write(f.getvalue())
+                tmp.flush()
+                cleanup.append(tmp.name)
+                yield tmp.name
+
+    for path in iter_sources():
+        try:
+            xl = pd.ExcelFile(path)
+            for sheet in xl.sheet_names:
+                df = xl.parse(sheet)
+                if df.empty:
+                    continue
+                series = df.iloc[:, 0].dropna()
+                for device_name, c in series.value_counts().items():
+                    equip = map_device_to_equipment(device_name)
+                    if not equip:
                         continue
-                    series = df.iloc[:, 0].dropna()
-                    for device_name, c in series.value_counts().items():
-                        equip = map_device_to_equipment(device_name)
-                        if not equip:
-                            continue
-                        try:
-                            c_int = int(c)
-                        except Exception:
-                            continue
-                        counts[equip] = max(counts.get(equip, 0), c_int)
-            except Exception as exc:
-                errors.append(f"{path}: {exc}")
+                    try:
+                        c_int = int(c)
+                    except Exception:
+                        continue
+                    counts[equip] = max(counts.get(equip, 0), c_int)
+        except Exception as exc:
+            errors.append(f"{path}: {exc}")
+    for path in cleanup:
+        try:
+            os.remove(path)
+        except Exception:
+            pass
     return counts, errors
 
 
@@ -1573,6 +1599,13 @@ if reference_schemas:
     st.write(sorted(reference_schemas.keys()))
     st.caption("Reference sample counts: " + ", ".join(f"{k}:{reference_counts.get(k, '?')}" for k in sorted(reference_schemas.keys())))
 learning_counts, learning_count_errors = load_learning_counts(LEARNING_DIR)
+uploaded_learning_counts, uploaded_learning_errors = load_learning_counts(
+    LEARNING_DIR, extra_files=learning_sheet_uploads
+)
+# Merge counts preferring explicit uploads
+for k, v in uploaded_learning_counts.items():
+    learning_counts[k] = max(learning_counts.get(k, 0), v)
+learning_count_errors.extend(uploaded_learning_errors)
 if learning_counts:
     st.info(
         f"Learning sheet expected counts loaded for {len(learning_counts)} equipment type(s): "
