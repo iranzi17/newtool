@@ -535,6 +535,59 @@ def infer_geometry_type(layer_name: str, gdf: gpd.GeoDataFrame | None, ref_geoms
     return "GeometryCollection"
 
 
+DEVICE_TO_EQUIPMENT = {
+    "HIGH_VOLTAGE_BUSBAR_MEDIUM_VOLTAGE_BUSBAR": "BUSBAR",
+    "POWER_TRANSFORMER_STEPUP_TRANSFORMER": "Transformers",
+    "POWER_TRANSFORMER": "Transformers",
+    "STEPUP_TRANSFORMER": "Transformers",
+    "HIGH_VOLTAGE_SWITCH_HIGH_VOLTAGE_SWITCH": "DISCONNECTOR_SWITCH",
+    "INDOOR_CIRCUIT_BREAKER_30KV_15KB": "cb_indor_switchgear",
+    "INDOR_CB": "cb_indor_switchgear",
+    "INDOOR_CURRENT_TRANSFORMER": "CT_INDOR_SWITCHGEAR",
+    "INDOR_CT": "CT_INDOR_SWITCHGEAR",
+    "INDOOR_VOLTAGE_TRANSFORMER": "VT_INDOR_SWITCHGEAR",
+    "INDOR_VT": "VT_INDOR_SWITCHGEAR",
+    "CONTROL_AND_PROTECTION_PANELS": "TELECOM",
+    "SUBSTATION_CABIN": "Cabin",
+    "LIGHTNING_ARRESTER": "LIGHTNING_ARRESTOR",
+    "LINE_BAY": "LINE_BAY",
+    "HIGHVOLTAGE_LINE": "LINE_BAY",
+    "LINE": "LINE_BAY",
+    "LINEBAY": "LINE_BAY",
+    "MV_SWITCH_GEAR": "INDOR_SWITCHGEAR_TABLE",
+    "CURRENT_TRANSFORMER": "CURRENT_TRANSFORMER",
+    "VOLTAGE_TRANSFORMER": "VOLTAGE_TRANSFORMER",
+    "HIGH_VOLTAGE_CIRCUIT_BREAKER_HIGH_VOLTAGE_CIRCUIT_BREAKER": "HIGH_VOLTAGE_CIRCUIT_BREAKER",
+    "DIGITAL_FAULT_RECORDER": "DIGITAL_FAULT_RECORDER",
+    "DISTANCE_PROTECTION": "TRANS_SYSTEM_PROT1",
+    "TRANSFORMER_PROTECTION": "transformer_protection",
+    "LINE_OVERCURRENT_PROTECTION": "line_overcurrent_protection",
+    "TRANSFORMER_BAY": "Transformers",
+    "POWER_TRANSFORMER__STEPUP_TRANSFORMER": "Transformers",
+    "DC_SUPPLY_110_VDC_BATTERY": "110VDC_BATTERY",
+    "DC_SUPPLY_110_VDC_CHARGER": "110VDC_CHARGER",
+    "DC_SUPPLY_48_VDC_BATTERY": "48VDC_BATTERY",
+    "DC_SUPPLY_48_VDC_CHARGER": "48VDC_CHARGER",
+    "HIGH_VOLTAGE_LINE": "LINE_BAY",
+    "TRANS_SYSTEM_PROT1": "TRANS_SYSTEM_PROT1",
+    "TELECOM": "TELECOM",
+    "TELECOM_ODF": "TELECOM",
+    "TELECOM_SDH": "TELECOM",
+    "UPS": "UPS",
+}
+
+
+def map_device_to_equipment(device_name: str) -> str | None:
+    """Map device labels from learning sheets to canonical equipment."""
+    if not device_name:
+        return None
+    norm = canonical_layer_name(str(device_name))
+    if norm in DEVICE_TO_EQUIPMENT:
+        return DEVICE_TO_EQUIPMENT[norm]
+    # Fall back to layer mapping aliases
+    return map_layer_to_equipment(device_name)
+
+
 def export_empty_layer(out_path: str, layer_name: str, geometry_type: str, fields: list[str], crs):
     """Create an empty GPKG layer with the provided schema."""
     schema = {
@@ -877,6 +930,23 @@ LAYER_NAME_ALIASES = {
     "POINTCONNECTION": "CONNECTION_POINTS",
     "TELECOM_ODF": "TELECOM",
     "TELECOM_SDH": "TELECOM",
+    "LINEBAY": "LINE_BAY",
+    "LINE": "LINE_BAY",
+    "LINE_BAY": "LINE_BAY",
+    "HIGHVOLTAGE_LINE": "LINE_BAY",
+    "POWERTRANSFORMER": "Transformers",
+    "POWER_TRANSFORMER": "Transformers",
+    "POWER_TRANSFORMER_STEPUP_TRANSFORMER": "Transformers",
+    "TRANSFORMER_BAY": "Transformers",
+    "INDOR_CB": "cb_indor_switchgear",
+    "INDOR_CT": "CT_INDOR_SWITCHGEAR",
+    "INDOR_VT": "VT_INDOR_SWITCHGEAR",
+    "INDOOR_CURRENT_TRANSFORMER": "CT_INDOR_SWITCHGEAR",
+    "INDOOR_VOLTAGE_TRANSFORMER": "VT_INDOR_SWITCHGEAR",
+    "INDOORCIRCUITBREAKER": "cb_indor_switchgear",
+    "HIGH_VOLTAGE_SWITCH_HIGH_VOLTAGE_SWITCH": "DISCONNECTOR_SWITCH",
+    "MV_SWITCH_GEAR": "INDOR_SWITCHGEAR_TABLE",
+    "CONTROL_AND_PROTECTION_PANELS": "TELECOM",
     "BUSBAR1": "BUSBAR",
 }
 
@@ -1447,6 +1517,39 @@ def load_reference_schemas(sample_dir: str):
     return schemas, counts, geoms, errors, fallback_layers
 
 
+def load_learning_counts(learning_dir: str):
+    """Harvest expected equipment counts from learning Excel sheets."""
+    counts: dict[str, int] = {}
+    errors: list[str] = []
+    if not os.path.isdir(learning_dir):
+        return counts, errors
+    for root, _, files in os.walk(learning_dir):
+        for fname in files:
+            lower = fname.lower()
+            if not (lower.endswith(".xlsx") or lower.endswith(".xls")):
+                continue
+            path = os.path.join(root, fname)
+            try:
+                xl = pd.ExcelFile(path)
+                for sheet in xl.sheet_names:
+                    df = xl.parse(sheet)
+                    if df.empty:
+                        continue
+                    series = df.iloc[:, 0].dropna()
+                    for device_name, c in series.value_counts().items():
+                        equip = map_device_to_equipment(device_name)
+                        if not equip:
+                            continue
+                        try:
+                            c_int = int(c)
+                        except Exception:
+                            continue
+                        counts[equip] = max(counts.get(equip, 0), c_int)
+            except Exception as exc:
+                errors.append(f"{path}: {exc}")
+    return counts, errors
+
+
 (
     reference_schemas,
     reference_counts_raw,
@@ -1469,6 +1572,16 @@ if reference_schemas:
     )
     st.write(sorted(reference_schemas.keys()))
     st.caption("Reference sample counts: " + ", ".join(f"{k}:{reference_counts.get(k, '?')}" for k in sorted(reference_schemas.keys())))
+learning_counts, learning_count_errors = load_learning_counts(LEARNING_DIR)
+if learning_counts:
+    st.info(
+        f"Learning sheet expected counts loaded for {len(learning_counts)} equipment type(s): "
+        + ", ".join(f"{k}:{v}" for k, v in sorted(learning_counts.items()))
+    )
+if learning_count_errors:
+    with st.expander("Learning sheet warnings"):
+        for msg in learning_count_errors:
+            st.write(msg)
 
 if schema_errors:
     with st.expander("Reference schema warnings"):
@@ -1701,8 +1814,11 @@ for layer_name, gdf in loaded_layers.items():
         attrs["geometry"] = geom
         # Respect sample reference counts if available to prevent runaway duplicates
         ref_cap = reference_counts.get(target_layer) if use_reference_alignment else None
+        learning_cap = learning_counts.get(target_layer) if learning_counts else None
+        cap_candidates = [c for c in (ref_cap, learning_cap) if c is not None]
+        cap_limit = min(cap_candidates) if cap_candidates else None
         current_len = len(processed_records.get(target_layer, []))
-        if ref_cap is not None and current_len >= ref_cap:
+        if cap_limit is not None and current_len >= cap_limit:
             continue
         processed_records.setdefault(target_layer, []).append(attrs)
         processed_crs.setdefault(target_layer, layer_crs)
